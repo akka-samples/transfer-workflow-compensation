@@ -39,7 +39,6 @@ public class TransferWorkflow extends Workflow<TransferState> {
     this.componentClient = componentClient;
   }
 
-  // tag::definition[]
   @Override
   public WorkflowDef<TransferState> definition() {
     Step withdraw =
@@ -71,13 +70,10 @@ public class TransferWorkflow extends Workflow<TransferState> {
           }
         });
 
-    // tag::compensation[]
     Step deposit =
       step("deposit")
         .asyncCall(Deposit.class, cmd -> {
-          // end::compensation[]
           logger.info("Running deposit: {}", cmd);
-          // tag::compensation[]
           return componentClient.forEventSourcedEntity(currentState().transfer().to())
             .method(WalletEntity::deposit)
             .invokeAsync(cmd);
@@ -90,9 +86,7 @@ public class TransferWorkflow extends Workflow<TransferState> {
                 .end(); // <2>
             }
             case Failure failure -> {
-              // end::compensation[]
               logger.warn("Deposit failed with msg: {}", failure.errorMsg());
-              // tag::compensation[]
               return effects()
                 .updateState(currentState().withStatus(DEPOSIT_FAILED))
                 .transitionTo("compensate-withdraw"); // <3>
@@ -103,13 +97,9 @@ public class TransferWorkflow extends Workflow<TransferState> {
     Step compensateWithdraw =
       step("compensate-withdraw") // <4>
         .asyncCall(() -> {
-          // end::compensation[]
           logger.info("Running withdraw compensation");
-          // tag::compensation[]
           var transfer = currentState().transfer();
-          // end::compensation[]
           // depositId is reused for the compensation, just to have a stable commandId and simplify the example
-          // tag::compensation[]
           String commandId = currentState().depositId();
           return componentClient.forEventSourcedEntity(transfer.from())
             .method(WalletEntity::deposit)
@@ -127,24 +117,18 @@ public class TransferWorkflow extends Workflow<TransferState> {
             }
           }
         });
-    // end::compensation[]
 
-    // tag::step-timeout[]
     Step failoverHandler =
       step("failover-handler")
         .asyncCall(() -> {
-          // end::step-timeout[]
           logger.info("Running workflow failed step");
-          // tag::step-timeout[]
           return CompletableFuture.completedStage("handling failure");
         })
         .andThen(String.class, __ -> effects()
           .updateState(currentState().withStatus(REQUIRES_MANUAL_INTERVENTION))
           .end())
         .timeout(ofSeconds(1)); // <1>
-    // end::step-timeout[]
 
-    // tag::pausing[]
     Step waitForAcceptation =
       step("wait-for-acceptation")
         .asyncCall(() -> {
@@ -158,23 +142,14 @@ public class TransferWorkflow extends Workflow<TransferState> {
         })
         .andThen(Done.class, __ ->
           effects().pause()); // <2>
-    // end::pausing[]
 
-    // tag::timeouts[]
-    // tag::recover-strategy[]
     return workflow()
-      // end::recover-strategy[]
-      // end::timeouts[]
-      // tag::timeouts[]
       .timeout(ofSeconds(5)) // <1>
       .defaultStepTimeout(ofSeconds(2)) // <2>
-      // end::timeouts[]
-      // tag::recover-strategy[]
       .failoverTo("failover-handler", maxRetries(0)) // <1>
       .defaultStepRecoverStrategy(maxRetries(1).failoverTo("failover-handler")) // <2>
       .addStep(withdraw)
       .addStep(deposit, maxRetries(2).failoverTo("compensate-withdraw")) // <3>
-      // end::recover-strategy[]
       .addStep(compensateWithdraw)
       .addStep(waitForAcceptation)
       .addStep(failoverHandler);
@@ -221,15 +196,12 @@ public class TransferWorkflow extends Workflow<TransferState> {
     }
   }
 
-  // tag::resuming[]
   public Effect<String> accept() {
     if (currentState() == null) {
       return effects().error("transfer not started");
     } else if (currentState().status() == WAITING_FOR_ACCEPTATION) { // <1>
       Transfer transfer = currentState().transfer();
-      // end::resuming[]
       logger.info("Accepting transfer: " + transfer);
-      // tag::resuming[]
       Withdraw withdrawInput = new Withdraw(currentState().withdrawId(), transfer.amount());
       return effects()
         .transitionTo("withdraw", withdrawInput)
@@ -238,7 +210,6 @@ public class TransferWorkflow extends Workflow<TransferState> {
       return effects().error("Cannot accept transfer with status: " + currentState().status());
     }
   }
-  // end::resuming[]
 
   public Effect<TransferState> getTransferState() {
     if (currentState() == null) {
