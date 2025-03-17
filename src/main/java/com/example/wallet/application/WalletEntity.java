@@ -6,7 +6,8 @@ import akka.javasdk.eventsourcedentity.EventSourcedEntity;
 import com.example.wallet.application.WalletEntity.WalletResult.Failure;
 import com.example.wallet.application.WalletEntity.WalletResult.Success;
 import com.example.wallet.domain.Wallet;
-import com.example.wallet.domain.WalletCommand;
+import com.example.wallet.domain.WalletCommand.Deposit;
+import com.example.wallet.domain.WalletCommand.Withdraw;
 import com.example.wallet.domain.WalletEvent;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -19,6 +20,7 @@ import static akka.Done.done;
 
 @ComponentId("wallet")
 public class WalletEntity extends EventSourcedEntity<Wallet, WalletEvent> {
+
 
   private static final Logger logger = LoggerFactory.getLogger(WalletEntity.class);
 
@@ -44,7 +46,7 @@ public class WalletEntity extends EventSourcedEntity<Wallet, WalletEvent> {
     }
   }
 
-  public Effect<Done> create(int initialBalance) { // <1>
+  public Effect<Done> create(int initialBalance) {
     if (!currentState().isEmpty()){
       return effects().error("Wallet already exists");
     } else {
@@ -53,7 +55,7 @@ public class WalletEntity extends EventSourcedEntity<Wallet, WalletEvent> {
     }
   }
 
-  public Effect<WalletResult> withdraw(WalletCommand.Withdraw withdraw) { // <2>
+  public Effect<WalletResult> withdraw(Withdraw withdraw) {
     if (currentState().isEmpty()){
       return effects().error("Wallet does not exist");
     } else if (currentState().balance() < withdraw.amount()) {
@@ -66,7 +68,7 @@ public class WalletEntity extends EventSourcedEntity<Wallet, WalletEvent> {
     }
   }
 
-  public Effect<WalletResult> deposit(WalletCommand.Deposit deposit) { // <3>
+  public Effect<WalletResult> deposit(Deposit deposit) { // <1>
     if (currentState().isEmpty()){
       return effects().error("Wallet does not exist");
     } else {
@@ -77,7 +79,7 @@ public class WalletEntity extends EventSourcedEntity<Wallet, WalletEvent> {
     }
   }
 
-  public Effect<Integer> get() { // <4>
+  public Effect<Integer> get() {
     if (currentState().isEmpty()){
       return effects().error("Wallet does not exist");
     } else {
