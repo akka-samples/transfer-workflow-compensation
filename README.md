@@ -1,6 +1,5 @@
 # Build a Funds Transfer Workflow Between Two Wallets
 
-
 This guide demonstrates how to create a simple workflow for transferring funds between two wallets. It includes a compensation mechanism that handles scenarios where a deposit fails during a transfer, ensuring the system maintains consistency.
 
 ## Prerequisites
