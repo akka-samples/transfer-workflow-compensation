@@ -15,8 +15,6 @@ import com.example.wallet.domain.WalletCommand.Withdraw;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.CompletableFuture;
-
 import static com.example.transfer.domain.TransferState.TransferStatus.COMPENSATION_COMPLETED;
 import static com.example.transfer.domain.TransferState.TransferStatus.COMPLETED;
 import static com.example.transfer.domain.TransferState.TransferStatus.DEPOSIT_FAILED;
@@ -43,14 +41,15 @@ public class TransferWorkflow extends Workflow<TransferState> {
   public WorkflowDef<TransferState> definition() {
     Step withdraw =
       step("withdraw")
-        .asyncCall(Withdraw.class, cmd -> {
+        .call(Withdraw.class, cmd -> {
           logger.info("Running withdraw: {}", cmd);
 
           // cancelling the timer in case it was scheduled
-          return timers().cancel("acceptationTimout-" + currentState().transferId()).thenCompose(__ ->
-            componentClient.forEventSourcedEntity(currentState().transfer().from())
+          timers().delete("acceptationTimout-" + currentState().transferId());
+
+          return componentClient.forEventSourcedEntity(currentState().transfer().from())
               .method(WalletEntity::withdraw)
-              .invokeAsync(cmd));
+              .invoke(cmd);
         })
         .andThen(WalletResult.class, result -> {
           switch (result) {
@@ -72,11 +71,11 @@ public class TransferWorkflow extends Workflow<TransferState> {
 
     Step deposit =
       step("deposit")
-        .asyncCall(Deposit.class, cmd -> {
+        .call(Deposit.class, cmd -> {
           logger.info("Running deposit: {}", cmd);
           return componentClient.forEventSourcedEntity(currentState().transfer().to())
             .method(WalletEntity::deposit)
-            .invokeAsync(cmd);
+            .invoke(cmd);
         })
         .andThen(WalletResult.class, result -> { // <1>
           switch (result) {
@@ -96,14 +95,14 @@ public class TransferWorkflow extends Workflow<TransferState> {
 
     Step compensateWithdraw =
       step("compensate-withdraw") // <4>
-        .asyncCall(() -> {
+        .call(() -> {
           logger.info("Running withdraw compensation");
           var transfer = currentState().transfer();
           // depositId is reused for the compensation, just to have a stable commandId and simplify the example
           String commandId = currentState().depositId();
           return componentClient.forEventSourcedEntity(transfer.from())
             .method(WalletEntity::deposit)
-            .invokeAsync(new Deposit(commandId, transfer.amount()));
+            .invoke(new Deposit(commandId, transfer.amount()));
         })
         .andThen(WalletResult.class, result -> {
           switch (result) {
@@ -120,9 +119,9 @@ public class TransferWorkflow extends Workflow<TransferState> {
 
     Step failoverHandler =
       step("failover-handler")
-        .asyncCall(() -> {
+        .call(() -> {
           logger.info("Running workflow failed step");
-          return CompletableFuture.completedStage("handling failure");
+          return "handling failure";
         })
         .andThen(String.class, __ -> effects()
           .updateState(currentState().withStatus(REQUIRES_MANUAL_INTERVENTION))
@@ -131,14 +130,15 @@ public class TransferWorkflow extends Workflow<TransferState> {
 
     Step waitForAcceptation =
       step("wait-for-acceptation")
-        .asyncCall(() -> {
+        .call(() -> {
           String transferId = currentState().transferId();
-          return timers().startSingleTimer(
+          timers().createSingleTimer(
             "acceptationTimeout-" + transferId,
             ofHours(8),
             componentClient.forWorkflow(transferId)
               .method(TransferWorkflow::acceptationTimeout)
               .deferred()); // <1>
+          return Done.done();
         })
         .andThen(Done.class, __ ->
           effects().pause()); // <2>
