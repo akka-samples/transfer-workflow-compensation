@@ -36,7 +36,7 @@ public class TransferEndpoint {
 
   @Post("/{id}")
   public HttpResponse start(String id, Transfer transfer) {
-    log.info("Starting transfer [{}].", transfer.toString());
+    log.info("Starting transfer [{}].", transfer);
     componentClient.forWorkflow(id)
       .method(TransferWorkflow::startTransfer).invoke(transfer);
     return HttpResponses.accepted();
